@@ -1,0 +1,17 @@
+{
+  "uuid": "30db0a7d-ebbd-4bf7-aaad-4bed53d54530",
+  "shortName": "crazy-pebbel",
+  "longName": "crazy-pebbel",
+  "companyName": "PZoli",
+  "versionCode": 1,
+  "versionLabel": "1.0",
+  "watchapp": {
+    "watchface": false
+  },
+  "appKeys": {
+    "dummy": 0
+  },
+  "resources": {
+    "media": []
+  }
+}
