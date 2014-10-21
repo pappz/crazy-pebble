@@ -2,10 +2,10 @@
 
 #define RETRY_SEND_MS 100
 
+#define SQRT_MAGIC_F 0x5f3759df
+
 static Window *window;
-static GRect window_frame;
 static Layer *disc_layer;
-static TextLayer *text_layer;
 
 static AppTimer *timer;
 
@@ -20,8 +20,34 @@ typedef struct Disc {
 } Disc;
 
 static Disc disc;
+
+//For the coords calculation
+typedef struct WindowDiv {
+	float w;
+	float whalf;
+	float h;
+	float hhalf;
+} WindowDiv;
+
+static WindowDiv WDiv;
+
 static int btn = -1;
 
+/*
+ *  http://www.codeproject.com/Articles/69941/Best-Square-Root-Method-Algorithm-Function-Precisi
+ */
+float my_sqrt(const float x) {
+  const float xhalf = 0.5f*x;
+ 
+  union // get bits for floating value
+  {
+    float x;
+    int i;
+  } u;
+  u.x = x;
+  u.i = SQRT_MAGIC_F - (u.i >> 1);  // gives initial guess y0
+  return x*u.x*(1.5f - xhalf*u.x*u.x);// Newton step, repeating increases accuracy 
+}  
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
     btn = 2;
@@ -66,13 +92,15 @@ static void sendData(void *data) {
     }
 
     accel_service_peek(&accel);
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %f",(double) accel.x/(double) 4000);
-
-    //disc_apply_accel(disc, accel);
+    float d = my_sqrt((float) (accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
+    //APP_LOG(APP_LOG_LEVEL_DEBUG, "coord: %lf", d);
     //disc.pos.x =(double) accel.x/(double) 1500 * (window_frame.size.w-2*disc.radius)+disc.radius+window_frame.size.w/2;
     //disc.pos.y =-(double) accel.y/(double) 1500 * (window_frame.size.h-2*disc.radius)+disc.radius+window_frame.size.h/2;
     
-    //layer_mark_dirty(disc_layer);
+    disc.pos.x = accel.x / d * WDiv.w + WDiv.whalf;
+    disc.pos.y = accel.y*-1 / d * WDiv.h + WDiv.hhalf;
+
+    layer_mark_dirty(disc_layer);
 
 	dict_write_int(iter, 1, &accel.x, 2, 1);
 	dict_write_int(iter, 2, &accel.y, 2 ,1);
@@ -96,27 +124,30 @@ static void disc_layer_update_callback(Layer *me, GContext *ctx) {
 }
 
 static void disc_init() {
-    GRect frame = window_frame;
-    disc.pos.x = frame.size.w/2;
-    disc.pos.y = frame.size.h/2;
+    disc.pos.x = 0;
+    disc.pos.y = 0;
     disc.radius = 3;
 }
 
 static void window_load(Window *window) {
     Layer *window_layer = window_get_root_layer(window);
-    GRect frame = window_frame = layer_get_frame(window_layer);
+    GRect frame = layer_get_frame(window_layer);
     disc_layer = layer_create(frame);
   
     layer_set_update_proc(disc_layer, disc_layer_update_callback);
     layer_add_child(window_layer, disc_layer);
   
     disc_init();
-  
-    //layer_add_child(window_layer, text_layer_get_layer(text_layer));
+    
+    //For the coords calculation
+    WDiv.w = (frame.size.w-2*disc.radius)/2;
+    WDiv.whalf = frame.size.w/2;
+    WDiv.h = (frame.size.h-2*disc.radius)/2;
+    WDiv.hhalf = frame.size.h/2;
 }
 
-static void window_unload(Window *window) {
-    text_layer_destroy(text_layer);
+static void window_unload(Window *window){
+	  layer_destroy(disc_layer);
 }
 
 static void app_message_init(void) {
@@ -143,13 +174,13 @@ static void init(void) {
 
 static void deinit(void) {
     window_destroy(window);
+    accel_data_service_unsubscribe();
 }
 
 int main(void) {
 	app_message_init();
-	init();
 
-	APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", window);
+	init();
 	
 	app_event_loop();
 	deinit();
