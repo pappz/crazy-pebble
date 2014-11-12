@@ -1,7 +1,7 @@
 #include <pebble.h>
 
 #define RETRY_SEND_MS 100
-
+#define RESEND_LIMIT 50
 #define SQRT_MAGIC_F 0x5f3759df
 
 static Window *window;
@@ -30,8 +30,10 @@ typedef struct WindowDiv {
 } WindowDiv;
 
 static WindowDiv WDiv;
+static AccelData accelSent;
 
 static int btn = -1;
+static int btnSent = -1;
 
 /*
  *  http://www.codeproject.com/Articles/69941/Best-Square-Root-Method-Algorithm-Function-Precisi
@@ -92,6 +94,24 @@ static void sendData(void *data) {
     }
 
     accel_service_peek(&accel);
+
+    if ((accel.x-accelSent.x) > -RESEND_LIMIT &&
+        (accel.x-accelSent.x) <  RESEND_LIMIT &&
+        (accel.y-accelSent.y) > -RESEND_LIMIT &&
+        (accel.y-accelSent.y) <  RESEND_LIMIT &&
+        (accel.z-accelSent.z) > -RESEND_LIMIT &&
+        (accel.z-accelSent.z) <  RESEND_LIMIT &&
+        btn == btnSent)
+    {
+        app_timer_register(50, sendData, NULL);
+        return;
+    }
+
+    accelSent.x = accel.x;
+    accelSent.y = accel.y;
+    accelSent.z = accel.z;
+    btnSent = btn;
+
     float d = my_sqrt((float) (accel.x * accel.x + accel.y * accel.y + accel.z * accel.z));
     //APP_LOG(APP_LOG_LEVEL_DEBUG, "coord: %lf", d);
     //disc.pos.x =(double) accel.x/(double) 1500 * (window_frame.size.w-2*disc.radius)+disc.radius+window_frame.size.w/2;
@@ -102,12 +122,12 @@ static void sendData(void *data) {
 
     layer_mark_dirty(disc_layer);
 
-	dict_write_int(iter, 1, &accel.x, 2, 1);
-	dict_write_int(iter, 2, &accel.y, 2 ,1);
-	dict_write_int(iter, 3, &accel.z, 2 ,1);
-	dict_write_uint8(iter, 0, btn);
-	btn = -1;
-	app_message_outbox_send();
+    dict_write_int(iter, 1, &accel.x, 2, 1);
+    dict_write_int(iter, 2, &accel.y, 2 ,1);
+    dict_write_int(iter, 3, &accel.z, 2 ,1);
+    dict_write_uint8(iter, 0, btn);
+    btn = -1;
+    app_message_outbox_send();
 }
 
 void out_sent_handler(DictionaryIterator *sent, void *context) {
@@ -155,6 +175,7 @@ static void app_message_init(void) {
     app_message_open(16, 64);
     app_message_register_outbox_failed(out_failed_handler);
     app_message_register_outbox_sent(out_sent_handler);
+    accelSent = (AccelData) { .x = 0, .y = 0, .z = 0 };
 }
 
 static void init(void) {
