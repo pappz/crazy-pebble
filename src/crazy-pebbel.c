@@ -143,6 +143,11 @@ static void disc_layer_update_callback(Layer *me, GContext *ctx) {
 	graphics_fill_circle(ctx, GPoint(disc.pos.x, disc.pos.y), disc.radius);
 }
 
+static void circle_layer_update_callback(Layer *me, GContext* ctx) {
+    GRect bounds = layer_get_bounds(me);
+    graphics_draw_circle(ctx, GPoint(bounds.size.w/2, bounds.size.h/2), bounds.size.w/2);
+}
+
 static void disc_init() {
     disc.pos.x = 0;
     disc.pos.y = 0;
@@ -152,6 +157,7 @@ static void disc_init() {
 static void window_load(Window *window) {
     Layer *window_layer = window_get_root_layer(window);
     GRect frame = layer_get_frame(window_layer);
+
     disc_layer = layer_create(frame);
   
     layer_set_update_proc(disc_layer, disc_layer_update_callback);
@@ -164,6 +170,11 @@ static void window_load(Window *window) {
     WDiv.whalf = frame.size.w/2;
     WDiv.h = (frame.size.h-2*disc.radius)/2;
     WDiv.hhalf = frame.size.h/2;
+
+    //The background circle
+    Layer *circle_layer = layer_create(frame);
+    layer_set_update_proc(circle_layer, &circle_layer_update_callback);
+    layer_add_child(window_layer, circle_layer);
 }
 
 static void window_unload(Window *window){
