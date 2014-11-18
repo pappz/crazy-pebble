@@ -4,22 +4,25 @@
 #define RESEND_LIMIT 50
 #define SQRT_MAGIC_F 0x5f3759df
 
+#define BTN_DOWN 0
+#define BTN_SELECT 1
+#define BTN_UP 2
+#define BTN_DOWN_LONG 3
+#define BTN_SELECT_LONG 4
+#define BTN_UP_LONG 5
+
 static Window *window;
-static Layer *disc_layer;
+static Layer *pointer_layer;
 
 static AppTimer *timer;
 
-typedef struct Vec2d {
+typedef struct Pointer {
     double x;
     double y;
-} Vec2d;
-
-typedef struct Disc {
-    Vec2d pos;
     double radius;
-} Disc;
+} Pointer;
 
-static Disc disc;
+static Pointer pointer;
 
 //For the coords calculation
 typedef struct WindowDiv {
@@ -30,6 +33,7 @@ typedef struct WindowDiv {
 } WindowDiv;
 
 static WindowDiv WDiv;
+
 static AccelData accelSent;
 
 static int btn = -1;
@@ -39,40 +43,39 @@ static int btnSent = -1;
  *  http://www.codeproject.com/Articles/69941/Best-Square-Root-Method-Algorithm-Function-Precisi
  */
 float my_sqrt(const float x) {
-  const float xhalf = 0.5f*x;
- 
-  union // get bits for floating value
-  {
-    float x;
-    int i;
-  } u;
-  u.x = x;
-  u.i = SQRT_MAGIC_F - (u.i >> 1);  // gives initial guess y0
-  return x*u.x*(1.5f - xhalf*u.x*u.x);// Newton step, repeating increases accuracy 
-}  
+    const float xhalf = 0.5f*x;
+    union // get bits for floating value
+    {
+        float x;
+        int i;
+    } u;
+    u.x = x;
+    u.i = SQRT_MAGIC_F - (u.i >> 1);  // gives initial guess y0
+    return x*u.x*(1.5f - xhalf*u.x*u.x);// Newton step, repeating increases accuracy 
+}
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-    btn = 2;
+    btn = BTN_UP;
 }
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-    btn = 1;
+    btn = BTN_SELECT;
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-	btn = 0;
+	btn = BTN_DOWN;
 }
 
 static void long_up_click_handler(ClickRecognizerRef recognizer, void *context) {
-	btn = 5;
+	btn = BTN_UP_LONG;
 }
 
 static void long_select_click_handler(ClickRecognizerRef recognizer, void *context) {
-    btn = 4;
+    btn = BTN_SELECT_LONG;
 }
 
 static void long_down_click_handler(ClickRecognizerRef recognizer, void *context) {
-    btn = 3;
+    btn = BTN_DOWN_LONG;
 }
 
 static void click_config_provider(void *context) {
@@ -117,10 +120,10 @@ static void sendData(void *data) {
     //disc.pos.x =(double) accel.x/(double) 1500 * (window_frame.size.w-2*disc.radius)+disc.radius+window_frame.size.w/2;
     //disc.pos.y =-(double) accel.y/(double) 1500 * (window_frame.size.h-2*disc.radius)+disc.radius+window_frame.size.h/2;
     
-    disc.pos.x = accel.x / d * WDiv.w + WDiv.whalf;
-    disc.pos.y = accel.y*-1 / d * WDiv.h + WDiv.hhalf;
+    pointer.x = accel.x / d * WDiv.w + WDiv.whalf;
+    pointer.y = accel.y*-1 / d * WDiv.h + WDiv.hhalf;
 
-    layer_mark_dirty(disc_layer);
+    layer_mark_dirty(pointer_layer);
 
     dict_write_int(iter, 1, &accel.x, 2, 1);
     dict_write_int(iter, 2, &accel.y, 2 ,1);
@@ -138,9 +141,9 @@ void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, voi
 	timer = app_timer_register(RETRY_SEND_MS, sendData, NULL);
 }
 
-static void disc_layer_update_callback(Layer *me, GContext *ctx) {
+static void pointer_layer_update_callback(Layer *me, GContext *ctx) {
     graphics_context_set_fill_color(ctx, GColorBlack);
-	graphics_fill_circle(ctx, GPoint(disc.pos.x, disc.pos.y), disc.radius);
+	graphics_fill_circle(ctx, GPoint(pointer.x, pointer.y), pointer.radius);
 }
 
 static void circle_layer_update_callback(Layer *me, GContext* ctx) {
@@ -148,27 +151,34 @@ static void circle_layer_update_callback(Layer *me, GContext* ctx) {
     graphics_draw_circle(ctx, GPoint(bounds.size.w/2, bounds.size.h/2), bounds.size.w/2);
 }
 
-static void disc_init() {
-    disc.pos.x = 0;
-    disc.pos.y = 0;
-    disc.radius = 3;
+static void pointer_init() {
+    pointer.x = 0;
+    pointer.y = 0;
+    pointer.radius = 3;
+}
+
+static void app_message_init(void) {
+    app_comm_set_sniff_interval(SNIFF_INTERVAL_REDUCED);
+    app_message_open(16, 64);
+    app_message_register_outbox_failed(out_failed_handler);
+    app_message_register_outbox_sent(out_sent_handler);
 }
 
 static void window_load(Window *window) {
     Layer *window_layer = window_get_root_layer(window);
     GRect frame = layer_get_frame(window_layer);
 
-    disc_layer = layer_create(frame);
+    pointer_layer = layer_create(frame);
   
-    layer_set_update_proc(disc_layer, disc_layer_update_callback);
-    layer_add_child(window_layer, disc_layer);
+    layer_set_update_proc(pointer_layer, pointer_layer_update_callback);
+    layer_add_child(window_layer, pointer_layer);
   
-    disc_init();
+    pointer_init();
     
     //For the coords calculation
-    WDiv.w = (frame.size.w-2*disc.radius)/2;
+    WDiv.w = (frame.size.w-2*pointer.radius)/2;
     WDiv.whalf = frame.size.w/2;
-    WDiv.h = (frame.size.h-2*disc.radius)/2;
+    WDiv.h = (frame.size.h-2*pointer.radius)/2;
     WDiv.hhalf = frame.size.h/2;
 
     //The background circle
@@ -178,18 +188,11 @@ static void window_load(Window *window) {
 }
 
 static void window_unload(Window *window){
-	  layer_destroy(disc_layer);
-}
-
-static void app_message_init(void) {
-    app_comm_set_sniff_interval(SNIFF_INTERVAL_REDUCED);
-    app_message_open(16, 64);
-    app_message_register_outbox_failed(out_failed_handler);
-    app_message_register_outbox_sent(out_sent_handler);
-    accelSent = (AccelData) { .x = 0, .y = 0, .z = 0 };
+    layer_destroy(pointer_layer);
 }
 
 static void init(void) {
+	app_message_init();
     window = window_create();
     window_set_click_config_provider(window, click_config_provider);
     window_set_window_handlers(window, (WindowHandlers) {
@@ -200,7 +203,9 @@ static void init(void) {
     window_stack_push(window, true);
   
     accel_data_service_subscribe(0, NULL);
-  
+
+    accelSent = (AccelData) { .x = 0, .y = 0, .z = 0 };
+ 
     sendData(NULL);
 }
 
@@ -210,10 +215,7 @@ static void deinit(void) {
 }
 
 int main(void) {
-	app_message_init();
-
 	init();
-	
 	app_event_loop();
 	deinit();
 }
