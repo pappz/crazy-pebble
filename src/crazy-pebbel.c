@@ -106,7 +106,7 @@ static void sendData(void *data) {
         (accel.z-accelSent.z) <  RESEND_LIMIT &&
         btn == btnSent)
     {
-        app_timer_register(50, sendData, NULL);
+        app_timer_register(20, sendData, NULL);
         return;
     }
 
